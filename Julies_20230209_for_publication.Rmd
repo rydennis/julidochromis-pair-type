@@ -1,0 +1,619 @@
+---
+title: "Julies_2022"
+author: 
+date: "11/02/2022"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown of Analysis started 20220708 - update 20220729Codes
+
+for markdown help <http://rmarkdown.rstudio.com>.
+```{r libraries}
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(ggplot2)
+library(car)
+```
+
+## Data Entry
+
+```{r data_entry}
+#Data organizing
+#####
+#Prior to csv creation, I summed hitdivider.C and bite.C in excel to create aggression.C
+df.clean<-read.csv("~/Desktop/Ry Dennis 2021-2022/mystery videos from Kelsey/rstudio files/20230209_relevant_data.csv")
+df<-df.clean
+
+# round the states to remove decimal
+df$closedivider.S <-  round(df$closedivider.S, digits = 0)
+df$outnest.S <- round(df$outnest.S, digits = 0)
+```
+
+## Run the Plot
+```{r plots}
+df$order <- as.factor(df$order)
+# code for stats and plots for Dennis et al 2022 manuscript
+# use this line for published script and supply this data file.
+# df <- read.csv(file = "Julies_2022_SuppleTable_BehaviorData.csv")  
+df$plot.label <- as.factor(paste(df$pairtype,df$int.sex,df$sex, sep="."))
+df$plot.label.order.D <- df$plot.label # makes a duplicate column
+df$plot.label.order.D <- factor(df$plot.label, levels = levels(df$plot.label)[c(1,3,6,8,5,7,2,4)]) # reorders data and levels for labels
+
+spacing1 <- c(0,1,3,4,7,8,10,11) # used to place boxes in boxplot and data points
+spacing2 <- c(0.5,3.5,7.5,10.5) # used for labeling x-axis
+
+col.D = c("red","red","cyan","cyan","pink","pink", "blue","blue") # colors for plot
+
+par(mar = c(10, 5.1, 4.1, 2.1)) 
+## The default value for mar is c(5.1, 4.1, 4.1, 2.1) to reset it
+```
+
+```{r}
+#### <>< <>< <>< <>< <>< <>< Attack Mate with only large subjects  <><  ><> ><> ><> ><> ><> ><>  #### 
+#### Make a new dataframe that only includes large fish ####
+df.large <- df%>%
+  filter(size=="large")
+
+#I put 20230209_relevant_data.csv into Numbers for Mac and munged it to get a sum of mate attacks for each large fish for each intruder sex condition.
+#trial number is no longer a factor because each attmate.sum is an aggregate of two trials.
+df.large.AMSum<-read.csv("~/Desktop/Ry Dennis 2021-2022/mystery videos from Kelsey/rstudio files/20230210_attack_mate.csv")
+
+aov(attmate.sum ~sex*Int.sex, data=df.large.AMSum)
+summary(aov(attmate.sum ~sex*Int.sex, data=df.large.AMSum))[[1]][1:3, 4:5]
+```
+
+
+```{r}
+##### Do stats with three-way model, order as fixed and ID and intruder ID as random ####
+mod.aggression.C <- glmer(aggression.C~size*sex*int.sex+order+(1|ID)+(1|IntruderID), family = "poisson", data = df)
+summary(mod.aggression.C) 
+
+##### within body length of divider ####
+# ( glmer it was significant sizeXsex ; sexXint.sex ; sizeXsexXint.sex but this is a continuous variable) (order as fixed or random doesn't change much)
+mod.closedivider.S <- glmer(closedivider.S~size*sex*int.sex+order+(1|ID)+(1|IntruderID), data = df, family = "poisson") ### 
+summary(mod.closedivider.S) 
+
+# out of nest mutually exclusive with in nest
+#### NS (with order as either fixed or random)####
+mod.outnest.S <-       lmer(outnest.S~size*sex*int.sex+order+(1|ID)+(1|IntruderID), data = df)
+summary(mod.outnest.S) 
+
+##### Lateral roll####
+mod.lateralroll.C <- glmer(lateralroll.C~size*sex*int.sex+order+(1|ID)+(1|IntruderID), control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)), family="poisson", data = df)  ## 
+summary (mod.lateralroll.C)  
+
+
+#### order ####
+par(mfrow=c(2,2)) 
+boxplot(df$aggression.C~df$order, xlab = "Trial Number", ylab="Aggresson")
+boxplot(df$closedivider.S~df$order, xlab = "Trial Number", ylab="Close dividrer")
+boxplot(df$outnest.S~df$order, xlab = "Trial Number", ylab="Out of Nest")
+boxplot(df$lateralroll.C~df$order, xlab = "Trial Number", ylab="Lateral Roll")
+#NOT USED
+#boxplot(df.large$attmate.C~df.large$order, xlab = "Trial Number", ylab="Attack Mate")
+
+```
+
+## make plots of effects including order
+
+Set up GLMM tests with each condition as its own factor so that we can do pairwise comparisons.
+For Poisson distributed values: aggression, close to divider, and lateral roll, ptimize with bobyqa.
+Gaussian distributed values were done with a lmer and not optimized.
+
+
+```{r}
+############################
+## Aggression graphs linear estimate
+############################
+######
+# vectors for plotting coded in df as $plot.label 
+# add leading letters to make them plot in order. a, b, c, etc
+#set levels this order for the first round of comparisons. 
+#The intercept will be changed because in order to get the same test for all relevant comparisons, we need to change which value is the intercept. We cannot do linearHypothesis() with the intercept because comparing against the intercept gives meaningless results. this allows us to do the same test with all comparisons of interest.
+
+levels(df$plot.label)
+#first letter is intruder sex, second is subject sex, third is subject size
+h.f.F.L <- df$plot.label == "femaleLarger.female.Female" #changed below
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female" #second term is intruder sex, third is subject sex
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male" 
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+a.m.M.S <- df$plot.label == "femaleLarger.male.Male" #making this the intercept because I am not comparing that to "femaleLarger.female.Female"
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) #8 conditions
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+
+#model 
+glm2plot <- glmer(data = df, aggression.C~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.f.F.L + order + (1|ID)+(1|IntruderID),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),family="poisson") 
+summary(glm2plot) 
+#run pairwise comparisons to get 
+#intruder sex comparison: large Female, female intruder vs large Female, male intruder  (b.m.F.L vs h.f.F.L)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 1, 0, 0, 0, 0, 0,-1, 0, 0, 0))  
+
+#Subject sex comparison H.f.F.L vs C.F.M.L
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 1, 0 ,0, 0, 0,-1, 0, 0, 0))
+#size comparison H.f.F.L vs e.f.F.S
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,1, 0, 0,-1, 0, 0, 0))
+#between mates H.f.F.L vs g.f.M.S
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,0, 0, 1,-1, 0, 0, 0))
+```
+
+```{r}
+#aggression
+# change the order to do the rest of the comparisons
+levels(df$plot.label)
+a.f.F.L <- df$plot.label == "femaleLarger.female.Female"
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male"
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+h.m.M.S <- df$plot.label == "femaleLarger.male.Male"
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) #8 conditions
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+# Codes
+col.D = c("red","red","cyan","cyan","pink","pink", "blue","blue")
+BarSpace <- c(0.5,1,2,1,3,1,2,1) #redo the codes
+#model for pairwise comparisons
+glm2plot <- glmer(data = df, aggression.C~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.m.M.S + order + (1|ID)+(1|IntruderID),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),family="poisson")
+
+summary(glm2plot) 
+# the following does the pairwise comparisons that aren't in the initial comparison
+
+#intruder sex
+# large Female, female intruder vs large Female, male intruder (a.f.F.L vs b.m.F.L) (see above)
+# small male, female intruder vs small male male intruder (g vs h)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,0,1,-1,0,0,0))
+# small female, female intruder vs small female male intruder (e vs f)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,-1,0,0,0,0,0))
+#large male, female intruder vs large male male intruder (c vs d)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,-1,0,0,0,0,0,0,0))         
+
+# Sex (larger subjects w female.int)  (a vs c) See above
+# Sex (larger subjects w male.int)  (b vs d)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,-1,0,0,0,0,0,0,0))
+# Sex (smaller w female.int) (e vs g)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,0,-1,0,0,0,0))
+# Sex (smaller w male.int) (f vs h)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,1,0,-1,0,0,0))
+
+# Size (Female w female.int) (a vs e) See above
+# Size (Female w male.int) (b vs f)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,-1,0,0,0,0,0))
+# Size (Male w female.int) (c vs g)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,0,0,-1,0,0,0,0))
+# Size (Male w male.int) (d vs h)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,0,0,-1,0,0,0))
+
+# Size and sex (femalelarger w female.int) (a vs g) see above
+# Size and sex (Femalelarger w male.int) (b vs h)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,0,0,-1,0,0,0))
+# Size and sex (Malelarger w female.int) (c vs e)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,-1,0,0,0,0,0,0)) 
+# Size and sex (Malelarger w male.int) (d vs f)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,-1,0,0,0,0,0))
+
+
+M <- vcov(glm2plot)[c(1:8),c(1:8)]
+FE <- fixef(glm2plot)[c(1:8)]
+Estimates <- as.numeric(Codes %*% FE)
+EstVar <- rep(0,length(Estimates))
+#
+for(i in 1:8) EstVar[i] <- as.numeric(Codes[i,] %*% M %*% t(Codes)[,i])
+EstSE <- sqrt(EstVar)
+CI <- cbind(Estimates - 1.96*EstSE, Estimates + 1.96*EstSE) # is this fair if its not normal?
+
+#arrows(arrow.space,exp(CI[,1]),arrow.space,exp(CI[,2]),lwd=2,angle=90,code=3,length=.1)
+# leave off error bars they are too big.
+
+## plot Aggression from Estimates as reaction norm
+plot(rep(c(1,2),4), exp(Estimates),  pch = c(21,21,23,23,21,21,23,23), cex = c(2, 2, 2, 2, 1, 1, 1, 1), ylim=c(0, round(max(exp(Estimates)) + 0.1*max(exp(Estimates)),0)), xlim = c(0.8,2.2), xlab = "", xaxt = "n", ylab = "Total Count\nAggressive Acts", bg= col.D, col = "black")
+axis(1, at = c(1,2), labels = c("female","male") )
+axis(1, at = 1.5, line = 2, labels = c("Intruder Sex"), tick = FALSE)
+# ? lines # there must be a better way but this hack will work
+lines( x= c(1,2), y = exp(Estimates[c(1,2)]), col = "red", lty = 1)
+lines( x= c(1,2), y = exp(Estimates[c(3,4)]), col = "cyan", lty = 2)
+lines( x= c(1,2), y = exp(Estimates[c(5,6)]), col = "pink", lty = 2)
+lines( x= c(1,2), y = exp(Estimates[c(7,8)]), col = "blue", lty = 1)
+#two cyan (c vs d) (0.008068)
+text (1.3, 7.5 , "p=0.008",  srt = 35) # 
+# two pink (e vs f) (0.02156)
+text(1.5 ,0.5, "p=0.022", srt = 1)
+
+# Size (Female w female.int) (a vs e) (0.01557)
+arrows( x0=0.95, x1=0.95 , y0=exp(Estimates[1]) , y1=exp(Estimates[5]), code = 3 , angle = 90 , length = 0.1) 
+text(0.9 ,5, "p=0.016", srt = 90)
+###The above few lines add in the text to display, but do not actually calcualate the p values. P values are found just above this in the post-hoc tests, the the linearhypothesis tests
+############################
+```
+
+```{r}
+#close divider
+######
+levels(df$plot.label)
+a.m.M.S <- df$plot.label == "femaleLarger.male.Male" #switch these below
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male" 
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+h.f.F.L <- df$plot.label == "femaleLarger.female.Female" #switch these below
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) # 8 conditions
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+
+####
+glm2plot <- glmer(data = df, closedivider.S~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.f.F.L + order + (1|ID)+(1|IntruderID),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),family="poisson") 
+summary(glm2plot) 
+#h.f.F.L vs b.m.F.L    intruder sex                           
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 1, 0, 0, 0, 0, 0,-1, 0, 0, 0))  
+#H.f.F.L vs C.F.M.L    subject sex     
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 1, 0 ,0, 0, 0,-1, 0, 0, 0))
+#H.f.F.L vs e.f.F.S    size            
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,1, 0, 0,-1, 0, 0, 0))
+#H.f.F.L vs g.f.M.S    between mates   
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,0, 0, 1,-1, 0, 0, 0))# change the order to do the rest of the comparisons
+```
+```{r}
+############################
+##### closedivider graphs linear estimate ##### 
+levels(df$plot.label)
+a.f.F.L <- df$plot.label == "femaleLarger.female.Female"
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male"
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+h.m.M.S <- df$plot.label == "femaleLarger.male.Male"
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) #8 conditions
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+# Codes
+col.D = c("red","red","cyan","cyan","pink","pink", "blue","blue")
+BarSpace <- c(0.5,1,2,1,3,1,2,1) #redo the codes
+#####
+glm2plot <- glmer(data = df, df$closedivider.S~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.m.M.S + order+ (1|ID)+(1|IntruderID), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)), family = "poisson") ## 
+
+summary(glm2plot) 
+# the following does the pairwise comparisons that aren't in the initial model
+#two cyan (c vs d)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,-1,0,0,0,0,0,0,0))         
+# two pink (e vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,-1,0,0,0,0,0))
+# two blue (g vs h)  
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,0,1,-1,0,0,0))
+# two red (a vs b) 
+#this value is from summary(glm2plot)
+
+# Sex (larger w female.int)  (a vs c) see above
+#this value is from summary(glm2plot)
+# Sex (larger w male.int)  (b vs d) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,-1,0,0,0,0,0,0,0))
+# Sex (smaller w female.int) (e vs g) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,0,-1,0,0,0,0))
+# Sex (smaller w male.int) (f vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,1,0,-1,0,0,0))
+
+# Size (Female w male.int) (b vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,-1,0,0,0,0,0))
+# Size (Male w female.int) (c vs g) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,0,0,-1,0,0,0,0))
+# Size (Male w male.int) (d vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,0,0,-1,0,0,0))
+# Size (Female w female.int) (a vs e) see above
+
+##new
+# Size and sex (femalelarger w female.int) (a vs g) is above
+# Size and sex (Femalelarger w male.int) (b vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,0,0,-1,0,0,0))
+# Size and sex (Malelarger w female.int) (c vs e) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,-1,0,0,0,0,0,0)) 
+# Size and sex (Malelarger w male.int) (d vs f) (0.2875)
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,-1,0,0,0,0,0))
+```
+
+```{r}
+M <- vcov(glm2plot)[c(1:8),c(1:8)]
+FE <- fixef(glm2plot)[c(1:8)]
+Estimates <- as.numeric(Codes %*% FE)
+EstVar <- rep(0,length(Estimates))
+#
+for(i in 1:8) EstVar[i] <- as.numeric(Codes[i,] %*% M %*% t(Codes)[,i])
+EstSE <- sqrt(EstVar)
+
+
+## plot ckose divider from Estimates as reaction norm
+plot(rep(c(1,2),4), exp(Estimates),  pch = c(21,21,23,23,21,21,23,23), cex = c(2, 2, 2, 2, 1, 1, 1, 1), ylim=c(0, round(max(exp(Estimates)) + 0.1*max(exp(Estimates)),0)), xlim = c(0.85,2.15), xlab = "", xaxt = "n", ylab = "Total Seconds\nClose to Divider", bg= col.D, col = "black")
+axis(1, at = c(1,2), labels = c("female","male") )
+axis(1, at = 1.5, line = 2, labels = c("Intruder Sex"), tick = FALSE)
+# ? lines # there must be a better way but this hack will work
+lines( x= c(1,2), y = exp(Estimates[c(1,2)]), col = "red", lty = 1)
+lines( x= c(1,2), y = exp(Estimates[c(3,4)]), col = "cyan", lty = 2)
+lines( x= c(1,2), y = exp(Estimates[c(5,6)]), col = "pink", lty = 2)
+lines( x= c(1,2), y = exp(Estimates[c(7,8)]), col = "blue", lty = 1)
+#two cyan (c vs d) (0.09484) 
+text(1.75, 95., "p=0.095", srt = 15 )
+# two blue (g vs h) (0.09826) 
+text(1.85, 13.1, "p=0.098", srt = -10)
+
+# Size and sex (Femalelarger w male.int) (b vs h) (0.06544)
+arrows(x0=2.05, x1=2.05 , y0=exp(Estimates[2]) , y1=exp(Estimates[8]), code = 3 , angle = 90 , length = 0.1)
+text (2.1, 54.0 , "p=0.065",  srt = 90)  ## c vs g
+```
+
+```{r}
+#out of nest
+# change the order to do the rest of the comparisons
+######
+levels(df$plot.label)
+h.f.F.L <- df$plot.label == "femaleLarger.female.Female" #changed below
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male" 
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+a.m.M.S <- df$plot.label == "femaleLarger.male.Male"    #changed below
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) #changed from 4 (old julies) to 8 cuz I have 8 conditions
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+
+glm2plot <- glmer(data = df, outnest.S~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.f.F.L + order + (1|ID)+(1|IntruderID))
+summary(glm2plot) 
+
+#h.f.F.L vs b.m.F.L            #intruder sex              
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 1, 0, 0, 0, 0, 0,-1, 0, 0, 0))  
+#H.f.F.L vs C.F.M.L     subject sex
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 1, 0 ,0, 0, 0,-1, 0, 0, 0))
+#H.f.F.L vs e.f.F.S      subject size
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,1, 0, 0,-1, 0, 0, 0))
+#H.f.F.L vs g.f.M.S       between mates
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,0, 0, 1,-1, 0, 0, 0))# change the order to do the rest of the comparisons
+```
+```{r}
+############################
+## out nest graphs linear estimate
+############################
+levels(df$plot.label)
+a.f.F.L <- df$plot.label == "femaleLarger.female.Female"
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male"
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+h.m.M.S <- df$plot.label == "femaleLarger.male.Male"
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) 
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+# Codes
+col.D = c("red","red","cyan","cyan","pink","pink", "blue","blue")
+BarSpace <- c(0.5,1,2,1,3,1,2,1)
+#####
+glm2plot <- lmer(data = df, outnest.S~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.m.M.S + order+ (1|ID)+(1|IntruderID)) 
+
+summary(glm2plot) #(NS except order)
+# the following does the pairwise comparisons that aren't in the initial model
+# two red (a vs b) 
+#two cyan (c vs d) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,-1,0,0,0,0,0,0,0))         
+# two pink (e vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,-1,0,0,0,0,0))
+# two blue (g vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,0,1,-1,0,0,0))
+
+# Sex (larger w female.int)  (a vs c) 
+# Sex (larger w male.int)  (b vs d) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,-1,0,0,0,0,0,0,0))
+# Sex (smaller w female.int) (e vs g) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,0,-1,0,0,0,0))
+# Sex (smaller w male.int) (f vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,1,0,-1,0,0,0))
+
+# Size (Female w female.int) (a vs e) see above
+# Size (Female w male.int) (b vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,-1,0,0,0,0,0))
+# Size (Male w female.int) (c vs g) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,0,0,-1,0,0,0,0))
+# Size (Male w male.int) (d vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,0,0,-1,0,0,0))
+
+# Size and sex (femalelarger w female.int) (a vs g) see above
+# Size and sex (Femalelarger w male.int) (b vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,0,0,-1,0,0,0))
+# Size and sex (Malelarger w female.int) (c vs e) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,-1,0,0,0,0,0,0)) 
+# Size and sex (Malelarger w male.int) (d vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,-1,0,0,0,0,0))
+```
+
+```{r}
+M <- vcov(glm2plot)[c(1:8),c(1:8)]
+FE <- fixef(glm2plot)[c(1:8)]
+Estimates <- as.numeric(Codes %*% FE)
+EstVar <- rep(0,length(Estimates))
+#
+for(i in 1:8) EstVar[i] <- as.numeric(Codes[i,] %*% M %*% t(Codes)[,i])
+EstSE <- sqrt(EstVar)
+CI <- cbind(Estimates - 1.96*EstSE, Estimates + 1.96*EstSE) 
+
+## plot out of nest from Estimates as reaction norm
+plot(rep(c(1,2),4), Estimates,  pch = c(21,21,23,23,21,21,23,23), cex = c(2, 2, 2, 2, 1, 1, 1, 1), ylim=c(0, round(max(Estimates) + 0.1*max(Estimates),0)), xlim = c(0.95,2.05), xlab = "", xaxt = "n", ylab = "Total Seconds\nOut of Nest", bg= col.D, col = "black")
+axis(1, at = c(1,2), labels = c("female","male") )
+axis(1, at = 1.5, line = 2, labels = c("Intruder Sex"), tick = FALSE)
+
+lines( x= c(1,2), y = Estimates[c(1,2)], col = "red", lty = 1)
+lines( x= c(1,2), y = Estimates[c(3,4)], col = "cyan", lty = 2)
+lines( x= c(1,2), y = Estimates[c(5,6)], col = "pink", lty = 2)
+lines( x= c(1,2), y = Estimates[c(7,8)], col = "blue", lty = 1)
+
+```
+```{r}
+# lateral roll
+#change the order to do the rest of the comparisons
+######
+levels(df$plot.label)
+h.f.F.L <- df$plot.label == "femaleLarger.female.Female" #changed below
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male" 
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+a.m.M.S <- df$plot.label == "femaleLarger.male.Male" #changed below
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8) 
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+
+
+glm2plot <- glmer(data = df, lateralroll.C~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.f.F.L + order + (1|ID)+(1|IntruderID),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),family="poisson") 
+summary(glm2plot) 
+
+#h.f.F.L vs b.m.F.L          intruder sex                                       
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 1, 0, 0, 0, 0, 0,-1, 0, 0, 0))  
+#H.f.F.L vs C.F.M.L           subject sex
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 1, 0 ,0, 0, 0,-1, 0, 0, 0))
+#H.f.F.L vs e.f.F.S         subject size
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,1, 0, 0,-1, 0, 0, 0))
+#H.f.F.L vs g.f.M.S         between mates
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0, 0, 0, 0 ,0, 0, 1,-1, 0, 0, 0))# change the order to do the rest of the comparisons
+```
+```{r}
+## Lateral Roll graphs linear estimate
+############################
+levels(df$plot.label)
+a.f.F.L <- df$plot.label == "femaleLarger.female.Female"
+b.m.F.L <- df$plot.label == "femaleLarger.male.Female"
+c.f.M.L <- df$plot.label == "maleLarger.female.Male"
+d.m.M.L <- df$plot.label == "maleLarger.male.Male"
+e.f.F.S <- df$plot.label == "maleLarger.female.Female"
+f.m.F.S <- df$plot.label == "maleLarger.male.Female"
+g.f.M.S <- df$plot.label == "femaleLarger.female.Male"
+h.m.M.S <- df$plot.label == "femaleLarger.male.Male"
+
+## create treatment codes
+Codes <- matrix(0,nrow=8,ncol=8)
+Codes[,1] <- rep(1,8)
+Codes[2:8,2:8] <- diag(7)
+# Codes
+col.D = c("red","red","cyan","cyan","pink","pink", "blue","blue")
+BarSpace <- c(0.5,1,2,1,3,1,2,1) #redo the codes
+#####
+glm2plot <- glmer(data = df, lateralroll.C~ b.m.F.L + c.f.M.L + d.m.M.L + e.f.F.S + f.m.F.S + g.f.M.S + h.m.M.S + order+ (1|ID)+(1|IntruderID),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)),family="poisson") 
+
+summary(glm2plot) 
+# the following does the pairwise comparisons that aren't in the initial model
+# two red (a vs b) see above
+
+# two blue (g vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,0,1,-1,0,0,0))
+# two pink (e vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,-1,0,0,0,0,0))
+#two cyan (c vs d) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,-1,0,0,0,0,0,0,0))         
+
+# Sex (larger w female.int)  (a vs c) 
+
+# Sex (larger w male.int)  (b vs d) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,-1,0,0,0,0,0,0,0))
+# Sex (smaller w female.int) (e vs g) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,1,0,-1,0,0,0,0))
+# Sex (smaller w male.int) (f vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,0,0,1,0,-1,0,0,0))
+
+# Size (Female w female.int) (a vs e) 
+
+# Size (Female w male.int) (b vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,-1,0,0,0,0,0))
+# Size (Male w female.int) (c vs g) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,0,0,-1,0,0,0,0))
+# Size (Male w male.int) (d vs h)  
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,0,0,-1,0,0,0))
+
+##new
+# Size and sex (femalelarger w female.int) (a vs g)  
+
+# Size and sex (Femalelarger w male.int) (b vs h) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,1,0,0,0,0,0,-1,0,0,0))
+# Size and sex (Malelarger w female.int) (c vs e) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,1,0,-1,0,0,0,0,0,0)) 
+# Size and sex (Malelarger w male.int) (d vs f) 
+linearHypothesis(glm2plot, coef=fixef(glm2plot), hypothesis.matrix = c(0,0,0,1,0,-1,0,0,0,0,0))
+```
+
+```{r}
+M <- vcov(glm2plot)[c(1:8),c(1:8)]
+FE <- fixef(glm2plot)[c(1:8)]
+Estimates <- as.numeric(Codes %*% FE)
+EstVar <- rep(0,length(Estimates))
+#
+for(i in 1:8) EstVar[i] <- as.numeric(Codes[i,] %*% M %*% t(Codes)[,i])
+EstSE <- sqrt(EstVar)
+#barplot(exp(Estimates), space = BarSpace, col=col.D, ylim=c(0, round(max(exp(Estimates)) + 0.1*max(exp(Estimates)),0)), ylab = "lateral roll", names.arg=names(FE), las = 2, cex.names = 0.5)
+
+## plot Lateral Roll from Estimates as reaction norm
+plot(rep(c(1,2),4), exp(Estimates),  pch = c(21,21,23,23,21,21,23,23), cex = c(2, 2, 2, 2, 1, 1, 1, 1), ylim=c(0, round(max(exp(Estimates)) + 0.1*max(exp(Estimates)),0)), xlim = c(0.75,2.25), xlab = "", xaxt = "n", ylab = "Total Count\nLateral Roll", bg= col.D, col = "black")
+axis(1, at = c(1,2), labels = c("female","male") )
+axis(1, at = 1.5, line = 2, labels = c("Intruder Sex"), tick = FALSE)
+# ? lines # there must be a better way but this hack will work
+lines( x= c(1,2), y = exp(Estimates[c(1,2)]), col = "red", lty = 1)
+lines( x= c(1,2), y = exp(Estimates[c(3,4)]), col = "cyan", lty = 2)
+lines( x= c(1,2), y = exp(Estimates[c(5,6)]), col = "pink", lty = 2)
+lines( x= c(1,2), y = exp(Estimates[c(7,8)]), col = "blue", lty = 1)
+
+# Size (Male w female.int) (c vs g) (0.000163)
+arrows( x0=1.05, x1=1.05 , y0=exp(Estimates[3]) , y1=exp(Estimates[7]), code = 3 , angle = 90 , length = 0.1)
+text (1.10, 1.5 , "p<0.001",  srt = 90)  ## c vs g
+
+# Size (Male w male.int) (d vs h) (0.01943)
+arrows(x0=2.15, y0=exp(Estimates[4]), y1=exp(Estimates[8]), angle = 90, length = 0.35, code = 3)
+text(2.2 ,0.70, "p=0.019", srt = 90)
+
+# Size and sex (Malelarger w male.int) (d vs f) (0.06744)
+arrows(x0=1.95, y0=exp(Estimates[4]), y1=exp(Estimates[6]), angle = 90, length = 0.075, code = 3)
+text(1.9 ,0.775, "p=0.067", srt = 90)
+
+# Size and sex (Malelarger w female.int) (c vs e) (0.01614)
+arrows(x0=0.95, y0=exp(Estimates[3]), y1=exp(Estimates[5]), angle = 90, length = 0.075, code = 3)
+text(0.9 ,1.5, "p=0.016", srt = 90)
+
+# Size and sex (Femalelarger w male.int) (b vs h) (0.08334
+arrows(x0=2.05, y0=exp(Estimates[2]), y1=exp(Estimates[8]), angle = 90, length = 0.1, code = 3)
+text(2.1 ,.55, "p=0.083", srt = 90)
+
+# Size and sex (femalelarger w female.int) (a vs g) (0.00347)
+arrows(x0=1.125, y0=exp(Estimates[1]), y1=exp(Estimates[7]), angle = 90, length = 0.25, code = 3)
+text(1.175 ,0.525, "p=0.003", srt = 90)
+text (.8, 2.75, "d", cex = 2)
+```
+ 

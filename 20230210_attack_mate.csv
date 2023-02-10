@@ -1,0 +1,17 @@
+ID,Int.sex,attmate.sum,size,sex
+ML1M,female,0,large,Male
+ML1M,male,0,large,Male
+FL1F,female,2,large,Female
+FL1F,male,3,large,Female
+FL2F,female,3,large,Female
+FL2F,male,1,large,Female
+FL3F,female,0,large,Female
+FL3F,male,3,large,Female
+FL4F,female,1,large,Female
+FL4F,male,0,large,Female
+FL5F,female,0,large,Female
+FL5F,male,0,large,Female
+ML2M,female,1,large,Male
+ML2M,male,0,large,Male
+ML3M,female,3,large,Male
+ML3M,male,1,large,Male
